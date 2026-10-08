@@ -1,0 +1,703 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>생산 공정 간트</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: 상단 현황판 → 도구막대 → 좌측 공정 목록이 고정된 타임라인 시트 (작업지시별 그룹) */
+:root {
+  --bg: #EEF1F4;
+  --panel: #FFFFFF;
+  --ink: #17212B;
+  --muted: #5D6B7A;
+  --line: #D5DCE3;
+  --line-soft: #E6EBF0;
+  --weekend: #E3E8EE;
+  --holiday: #F6E3E1;
+  --accent: #1F5FBF;
+  --accent-ink: #FFFFFF;
+  --good: #2E7D32;
+  --warn: #B26A00;
+  --bad: #C62828;
+  --today: #C62828;
+  --p-in: #6B7A90; --p-cut: #2F6FD6; --p-mach: #0E8585; --p-weld: #C2410C;
+  --p-paint: #7C4DDB; --p-asm: #3F8A3A; --p-qc: #A87A00; --p-ship: #9D3A6B;
+  --f-body: "IBM Plex Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "Consolas", monospace;
+  --lw: 320px;
+  --rowh: 56px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0F151B; --panel: #172029; --ink: #E4EAF0; --muted: #93A1B0;
+    --line: #2A3643; --line-soft: #212C37; --weekend: #1B252F; --holiday: #2C1F22;
+    --accent: #5B93EE; --accent-ink: #0B1220; --good: #66BB6A; --warn: #F0A63A; --bad: #EF5350; --today: #EF5350;
+    --p-in: #8C9BB0; --p-cut: #5B93EE; --p-mach: #2BB3B3; --p-weld: #F07A3F;
+    --p-paint: #A78BFA; --p-asm: #66B35F; --p-qc: #E0B23A; --p-ship: #D06A9C;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0F151B; --panel: #172029; --ink: #E4EAF0; --muted: #93A1B0;
+  --line: #2A3643; --line-soft: #212C37; --weekend: #1B252F; --holiday: #2C1F22;
+  --accent: #5B93EE; --accent-ink: #0B1220; --good: #66BB6A; --warn: #F0A63A; --bad: #EF5350; --today: #EF5350;
+  --p-in: #8C9BB0; --p-cut: #5B93EE; --p-mach: #2BB3B3; --p-weld: #F07A3F;
+  --p-paint: #A78BFA; --p-asm: #66B35F; --p-qc: #E0B23A; --p-ship: #D06A9C;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 17px; line-height: 1.45; }
+.wrap { max-width: 1440px; margin: 0 auto; padding-inline: 20px; padding-block: 24px 40px; display: flex; flex-direction: column; gap: 16px; }
+.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+
+header.top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
+header.top h1 { margin: 0; font-size: 26.5px; font-weight: 700; letter-spacing: -0.01em; text-wrap: balance; }
+header.top .sub { color: var(--muted); font-size: 15.5px; margin-top: 2px; }
+.kpis { display: flex; flex-wrap: wrap; gap: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+.kpi { padding: 8px 16px; display: flex; flex-direction: column; min-width: 84px; border-left: 1px solid var(--line-soft); }
+.kpi:first-child { border-left: 0; }
+.kpi .k { font-size: 13px; color: var(--muted); letter-spacing: 0.04em; }
+.kpi .v { font-family: var(--f-mono); font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.kpi.bad .v { color: var(--bad); }
+.kpi.warn .v { color: var(--warn); }
+.kpi.good .v { color: var(--good); }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--panel); }
+.seg button { border: 0; background: transparent; color: var(--muted); padding: 6px 11px; font: inherit; font-size: 15.5px; cursor: pointer; border-left: 1px solid var(--line-soft); }
+.seg button:first-child { border-left: 0; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+.tlabel { font-size: 13px; color: var(--muted); letter-spacing: 0.05em; margin-right: 6px; }
+.tgroup { display: inline-flex; align-items: center; }
+.spacer { flex: 1; }
+.btn { font: inherit; font-size: 15.5px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.btn.danger { color: var(--bad); }
+.btn.danger.armed { background: var(--bad); border-color: var(--bad); color: var(--panel); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.sheet-wrap { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; overflow: auto; max-height: 72vh; position: relative; }
+.sheet { position: relative; }
+.hdr { position: sticky; top: 0; z-index: 6; background: var(--panel); border-bottom: 1px solid var(--line); }
+.hrow { display: flex; }
+.hrow .lcell { position: sticky; left: 0; z-index: 7; background: var(--panel); width: var(--lw); flex: none; border-right: 1px solid var(--line); padding: 6px 12px; font-size: 13px; color: var(--muted); letter-spacing: .05em; display: flex; align-items: flex-end; }
+.months, .days { position: relative; height: 26px; flex: none; }
+.days { height: 38px; }
+.month { position: absolute; top: 0; height: 26px; padding: 3px 8px; font-size: 14.5px; font-weight: 600; border-left: 1px solid var(--line); white-space: nowrap; overflow: hidden; }
+.day { position: absolute; top: 0; height: 38px; text-align: center; font-size: 12.5px; line-height: 1.15; padding-top: 3px; color: var(--muted); font-family: var(--f-mono); }
+.day b { display: block; font-weight: 500; color: var(--ink); font-size: 13px; }
+.day.we b, .day.hol b { color: var(--bad); }
+.day.today b { background: var(--today); color: var(--panel); border-radius: 3px; margin: 0 3px; }
+
+.cols { position: absolute; top: 0; bottom: 0; pointer-events: none; z-index: 0; }
+.col { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--line-soft); }
+.col.we { background: var(--weekend); }
+.col.hol { background: var(--holiday); }
+.col.mon { border-left-color: var(--line); }
+.todayline { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--today); z-index: 3; pointer-events: none; opacity: .85; }
+
+.row { display: flex; height: var(--rowh); border-bottom: 1px solid var(--line-soft); position: relative; }
+.row .lcell { position: sticky; left: 0; z-index: 5; background: var(--panel); width: var(--lw); flex: none; border-right: 1px solid var(--line); padding: 5px 12px; display: flex; flex-direction: column; justify-content: center; min-width: 0; cursor: pointer; }
+.row:hover .lcell { background: color-mix(in srgb, var(--panel) 92%, var(--accent)); }
+.row .tcell { position: relative; flex: none; }
+.l1 { display: flex; align-items: center; gap: 6px; min-width: 0; font-weight: 600; font-size: 15.5px; }
+.l1 .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.l2 { color: var(--muted); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sw { width: 11px; height: 11px; border-radius: 2px; flex: none; background: var(--c); }
+.chip { font-size: 12.5px; font-weight: 600; padding: 1px 6px; border-radius: 3px; flex: none; border: 1px solid currentColor; line-height: 1.4; }
+.chip.s-plan { color: var(--muted); }
+.chip.s-run { color: var(--accent); }
+.chip.s-warn { color: var(--warn); }
+.chip.s-late { color: var(--panel); background: var(--bad); border-color: var(--bad); }
+.chip.s-done { color: var(--good); }
+.chip.ex { color: var(--muted); border-style: dashed; font-weight: 500; }
+
+.grow { background: color-mix(in srgb, var(--panel) 94%, var(--ink)); height: 46px; }
+.grow .lcell { background: color-mix(in srgb, var(--panel) 94%, var(--ink)); cursor: default; }
+.grow:hover .lcell { background: color-mix(in srgb, var(--panel) 94%, var(--ink)); }
+.grow .l1 { font-size: 15px; }
+.gbar { position: absolute; top: 18px; height: 10px; border-radius: 2px; background: color-mix(in srgb, var(--ink) 22%, transparent); overflow: hidden; }
+.gbar i { position: absolute; inset: 0 auto 0 0; background: var(--ink); opacity: .7; }
+
+.bar { position: absolute; top: 13px; height: 30px; border-radius: 4px; background: color-mix(in srgb, var(--c) 26%, var(--panel)); border: 1px solid color-mix(in srgb, var(--c) 70%, var(--panel)); z-index: 4; cursor: pointer; touch-action: pan-x pan-y; }
+.bar .fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--c); border-radius: 3px 0 0 3px; }
+.bar.done .fill { border-radius: 3px; }
+.bar.late { border: 2px solid var(--bad); }
+.bar .hdl { position: absolute; right: -3px; top: 0; bottom: 0; width: 9px; cursor: ew-resize; }
+.bar.drag { opacity: .8; box-shadow: 0 2px 10px color-mix(in srgb, var(--ink) 30%, transparent); }
+.overdue { position: absolute; top: 18px; height: 20px; z-index: 2; background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--bad) 45%, transparent) 0 4px, transparent 4px 8px); border-radius: 0 3px 3px 0; pointer-events: none; }
+.blabel { position: absolute; top: 18px; font-size: 14px; white-space: nowrap; color: var(--muted); z-index: 4; pointer-events: none; font-variant-numeric: tabular-nums; }
+.blabel b { color: var(--ink); font-weight: 600; }
+
+.empty { padding: 48px 20px; text-align: center; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.empty h2 { margin: 0; color: var(--ink); font-size: 20.5px; }
+.empty p { margin: 0; max-width: 46ch; }
+.empty .acts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 14.5px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend .hatch { width: 18px; height: 10px; background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--bad) 55%, transparent) 0 3px, transparent 3px 6px); }
+.legend .tl { width: 2px; height: 12px; background: var(--today); }
+.legend .hol { width: 12px; height: 12px; background: var(--holiday); border: 1px solid var(--line); }
+.note { font-size: 14.5px; color: var(--muted); }
+
+dialog { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); padding: 0; width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
+dialog::backdrop { background: color-mix(in srgb, #000 40%, transparent); }
+dialog form { display: flex; flex-direction: column; gap: 14px; padding: 20px; }
+dialog h2 { margin: 0; font-size: 20.5px; }
+.fgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.fgrid .full { grid-column: 1 / -1; }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field label { font-size: 14.5px; color: var(--muted); }
+.field input, .field select, .field textarea { font: inherit; font-size: 17px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); color: var(--ink); width: 100%; min-width: 0; }
+.field textarea { min-height: 60px; resize: vertical; }
+.prog { display: flex; gap: 10px; align-items: center; }
+.prog input[type=range] { flex: 1; padding: 0; accent-color: var(--accent); }
+.prog input[type=number] { width: 76px; }
+.err { color: var(--bad); font-size: 15.5px; min-height: 1em; }
+.dacts { display: flex; gap: 8px; flex-wrap: wrap; }
+.dacts .spacer { flex: 1; }
+
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--panel); padding: 9px 16px; border-radius: 6px; font-size: 15.5px; z-index: 50; max-width: calc(100vw - 32px); }
+
+@media (max-width: 640px) {
+  :root { --lw: 156px; --rowh: 58px; }
+  .wrap { padding-inline: 16px; }
+  .kpi { padding: 6px 10px; min-width: 64px; }
+  .kpi .v { font-size: 20.5px; }
+  .fgrid { grid-template-columns: 1fr; }
+  .l1 .chip.s-plan, .l1 .chip.s-run, .l1 .chip.s-done { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>생산 공정 간트</h1>
+      <div class="sub">기준일 <span id="todayLbl" class="num"></span> · 막대를 끌어 일정을 옮기고, 오른쪽 끝을 끌어 기간을 바꿉니다</div>
+    </div>
+    <div class="kpis" id="kpis" aria-label="공정 현황"></div>
+  </header>
+
+  <div class="toolbar">
+    <div class="tgroup"><span class="tlabel">묶음</span>
+      <div class="seg" id="groupSeg">
+        <button type="button" data-v="order" aria-pressed="true">작업지시</button>
+        <button type="button" data-v="line" aria-pressed="false">설비·라인</button>
+        <button type="button" data-v="process" aria-pressed="false">공정</button>
+      </div>
+    </div>
+    <div class="tgroup"><span class="tlabel">상태</span>
+      <div class="seg" id="statusSeg">
+        <button type="button" data-v="all" aria-pressed="true">전체</button>
+        <button type="button" data-v="run" aria-pressed="false">진행</button>
+        <button type="button" data-v="warn" aria-pressed="false">주의</button>
+        <button type="button" data-v="late" aria-pressed="false">지연</button>
+        <button type="button" data-v="plan" aria-pressed="false">예정</button>
+        <button type="button" data-v="done" aria-pressed="false">완료</button>
+      </div>
+    </div>
+    <div class="tgroup"><span class="tlabel">눈금</span>
+      <div class="seg" id="scaleSeg">
+        <button type="button" data-v="day" aria-pressed="true">일</button>
+        <button type="button" data-v="week" aria-pressed="false">주</button>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <button type="button" class="btn" id="todayBtn">오늘로</button>
+    <button type="button" class="btn danger" id="clearExBtn" hidden>예시 지우기</button>
+    <button type="button" class="btn primary" id="addBtn">공정 추가</button>
+  </div>
+
+  <div class="sheet-wrap" id="sheetWrap">
+    <div id="sheet"></div>
+  </div>
+
+  <div class="legend" id="legend"></div>
+  <div class="note" id="note"></div>
+</div>
+
+<dialog id="dlg">
+  <form id="frm" novalidate>
+    <h2 id="dlgTitle">공정 추가</h2>
+    <div class="fgrid">
+      <div class="field"><label for="f-order">작업지시번호</label><input id="f-order" list="dl-order" required placeholder="WO-2610-001"></div>
+      <div class="field"><label for="f-product">품목</label><input id="f-product" list="dl-product" placeholder="품명 / 품번"></div>
+      <div class="field"><label for="f-process">공정</label><select id="f-process"></select></div>
+      <div class="field"><label for="f-line">설비·라인</label><input id="f-line" list="dl-line" placeholder="예: 레이저 1호기"></div>
+      <div class="field"><label for="f-start">시작일</label><input id="f-start" type="date" required></div>
+      <div class="field"><label for="f-end">종료일</label><input id="f-end" type="date" required></div>
+      <div class="field"><label for="f-qty">계획 수량 (EA)</label><input id="f-qty" type="number" min="0" step="1" inputmode="numeric"></div>
+      <div class="field"><label for="f-owner">담당</label><input id="f-owner" placeholder="담당자 또는 조"></div>
+      <div class="field full"><label for="f-prog">진척률 (%)</label>
+        <div class="prog"><input id="f-progr" type="range" min="0" max="100" step="5" aria-label="진척률 슬라이더"><input id="f-prog" type="number" min="0" max="100" step="1" class="num"></div>
+      </div>
+      <div class="field full"><label for="f-memo">메모</label><textarea id="f-memo" placeholder="자재 이슈, 설비 점검 등"></textarea></div>
+    </div>
+    <div class="err" id="ferr" role="alert"></div>
+    <div class="dacts">
+      <button type="button" class="btn danger" id="delBtn">삭제</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn" id="cancelBtn">취소</button>
+      <button type="submit" class="btn primary" id="saveBtn">저장</button>
+    </div>
+  </form>
+</dialog>
+<datalist id="dl-order"></datalist><datalist id="dl-product"></datalist><datalist id="dl-line"></datalist>
+
+<script>
+(function () {
+  const PROCESSES = [
+    { k: "자재입고", c: "--p-in" }, { k: "절단", c: "--p-cut" }, { k: "가공", c: "--p-mach" },
+    { k: "용접", c: "--p-weld" }, { k: "도장", c: "--p-paint" }, { k: "조립", c: "--p-asm" },
+    { k: "검사", c: "--p-qc" }, { k: "포장·출하", c: "--p-ship" }
+  ];
+  const PCOLOR = Object.fromEntries(PROCESSES.map(p => [p.k, p.c]));
+  const PORDER = Object.fromEntries(PROCESSES.map((p, i) => [p.k, i]));
+  // 2026–2027 공휴일 (대체공휴일 포함)
+  const HOLIDAYS = {
+    "2026-09-24": "추석 연휴", "2026-09-25": "추석", "2026-09-26": "추석 연휴",
+    "2026-10-03": "개천절", "2026-10-05": "대체공휴일", "2026-10-09": "한글날",
+    "2026-12-25": "성탄절", "2027-01-01": "신정",
+    "2027-02-06": "설날 연휴", "2027-02-07": "설날", "2027-02-08": "설날 연휴", "2027-02-09": "대체공휴일",
+    "2027-03-01": "삼일절"
+  };
+  const STATUS = { plan: "예정", run: "진행", warn: "주의", late: "지연", done: "완료" };
+  const WD = ["일", "월", "화", "수", "목", "금", "토"];
+  const DAY = 864e5;
+
+  const toN = s => { const [y, m, d] = s.split("-").map(Number); return Math.round(Date.UTC(y, m - 1, d) / DAY); };
+  const toS = n => new Date(n * DAY).toISOString().slice(0, 10);
+  const wd = n => new Date(n * DAY).getUTCDay();
+  const now = new Date();
+  const TODAY = Math.round(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / DAY);
+  const isValidDate = s => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+
+  const state = { tasks: [], group: "order", status: "all", scale: "day", loaded: false, db: null, coll: null, writable: null, noDb: false, scrolled: false };
+  try {
+    const saved = JSON.parse(localStorage.getItem("gantt-view") || "{}");
+    if (["order", "line", "process"].includes(saved.group)) state.group = saved.group;
+    if (["day", "week"].includes(saved.scale)) state.scale = saved.scale;
+  } catch (e) {}
+  const saveView = () => { try { localStorage.setItem("gantt-view", JSON.stringify({ group: state.group, scale: state.scale })); } catch (e) {} };
+
+  const $ = id => document.getElementById(id);
+  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+  function statusOf(t) {
+    const s = toN(t.start), e = toN(t.end), p = Number(t.progress) || 0;
+    if (p >= 100) return "done";
+    if (TODAY > e) return "late";
+    if (TODAY < s) return "plan";
+    const expected = (TODAY - s + 1) / (e - s + 1) * 100;
+    if (p + 20 < expected) return "warn";
+    return "run";
+  }
+
+  function toast(msg) {
+    const t = el("div", "toast", msg);
+    t.setAttribute("role", "status");
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 3200);
+  }
+
+  // ---------- 현황 ----------
+  function renderKpis(list) {
+    const k = $("kpis"); k.textContent = "";
+    const cnt = { plan: 0, run: 0, warn: 0, late: 0, done: 0 };
+    let w = 0, wp = 0;
+    list.forEach(t => { cnt[statusOf(t)]++; const d = toN(t.end) - toN(t.start) + 1; w += d; wp += d * (Number(t.progress) || 0); });
+    const items = [
+      ["전체 공정", list.length, ""], ["진행", cnt.run + cnt.warn, ""], ["주의", cnt.warn, "warn"],
+      ["지연", cnt.late, "bad"], ["완료", cnt.done, "good"], ["가중 진척률", w ? Math.round(wp / w) + "%" : "–", ""]
+    ];
+    items.forEach(([label, v, cls]) => {
+      const d = el("div", "kpi " + cls);
+      d.append(el("span", "k", label), el("span", "v", String(v)));
+      k.appendChild(d);
+    });
+  }
+
+  function renderLegend() {
+    const lg = $("legend"); lg.textContent = "";
+    PROCESSES.forEach(p => { const s = el("span"); const sw = el("i", "sw"); sw.style.setProperty("--c", `var(${p.c})`); s.append(sw, p.k); lg.appendChild(s); });
+    const a = el("span"); a.append(el("i", "tl"), "오늘"); lg.appendChild(a);
+    const b = el("span"); b.append(el("i", "hatch"), "지연 구간"); lg.appendChild(b);
+    const c = el("span"); c.append(el("i", "hol"), "공휴일"); lg.appendChild(c);
+  }
+
+  // ---------- 시트 ----------
+  function groupKey(t) {
+    if (state.group === "line") return t.line || "라인 미지정";
+    if (state.group === "process") return t.process || "공정 미지정";
+    return t.order || "작업지시 없음";
+  }
+
+  function renderEmpty(kind) {
+    const sheet = $("sheet"); sheet.textContent = ""; sheet.style.width = "";
+    const box = el("div", "empty");
+    if (kind === "loading") {
+      box.append(el("h2", null, "공정 일정을 불러오는 중"), el("p", null, "작업지시별 공정과 진척률이 이곳에 표시됩니다."));
+    } else if (kind === "nodb") {
+      box.append(el("h2", null, "이 화면에서는 공정 데이터를 불러올 수 없어요"), el("p", null, "로그인한 상태로 claude.ai에서 이 페이지를 열면 팀과 같은 일정을 보고 편집할 수 있습니다."));
+    } else if (kind === "filtered") {
+      box.append(el("h2", null, "조건에 맞는 공정이 없어요"), el("p", null, "상태 필터를 ‘전체’로 바꿔 보세요."));
+    } else {
+      box.append(el("h2", null, "등록된 공정이 없어요"), el("p", null, "작업지시번호, 공정, 설비, 기간을 입력해 첫 공정을 추가하세요. 예시 공정을 불러와 화면을 먼저 살펴볼 수도 있습니다."));
+      const acts = el("div", "acts");
+      const b1 = el("button", "btn primary", "공정 추가"); b1.type = "button"; b1.onclick = () => openEditor(null);
+      const b2 = el("button", "btn", "예시 공정 불러오기"); b2.type = "button"; b2.onclick = loadSamples;
+      if (state.writable === false) { b1.disabled = true; b2.disabled = true; }
+      acts.append(b1, b2); box.appendChild(acts);
+    }
+    sheet.appendChild(box);
+  }
+
+  function render() {
+    const all = state.tasks.filter(t => isValidDate(t.start) && isValidDate(t.end));
+    renderKpis(all);
+    $("clearExBtn").hidden = !all.some(t => t.example) || state.writable === false;
+    if (!state.loaded) return renderEmpty(state.noDb ? "nodb" : "loading");
+    if (!all.length) return renderEmpty("none");
+    let list = all;
+    if (state.status !== "all") list = all.filter(t => { const s = statusOf(t); return state.status === "run" ? (s === "run" || s === "warn") : s === state.status; });
+    if (!list.length) return renderEmpty("filtered");
+
+    const dayW = state.scale === "day" ? 40 : 15;
+    let lo = Math.min(TODAY, ...all.map(t => toN(t.start))) - 3;
+    let hi = Math.max(TODAY, ...all.map(t => toN(t.end))) + 10;
+    lo -= (wd(lo) + 6) % 7; // 월요일부터 시작
+    const days = hi - lo + 1, tw = days * dayW;
+    const X = n => (n - lo) * dayW;
+
+    const sheet = $("sheet"); sheet.textContent = "";
+    const root = el("div", "sheet");
+    const lwPx = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--lw")) || 320;
+    root.style.width = (lwPx + tw) + "px";
+
+    // 헤더
+    const hdr = el("div", "hdr");
+    const r1 = el("div", "hrow"), r2 = el("div", "hrow");
+    r1.appendChild(el("div", "lcell", ""));
+    r2.appendChild(el("div", "lcell", state.group === "order" ? "작업지시 / 공정" : state.group === "line" ? "설비·라인 / 공정" : "공정 / 작업지시"));
+    const months = el("div", "months"); months.style.width = tw + "px";
+    const dayRow = el("div", "days"); dayRow.style.width = tw + "px";
+    const cols = el("div", "cols"); cols.style.left = lwPx + "px"; cols.style.width = tw + "px";
+    for (let n = lo; n <= hi; n++) {
+      const s = toS(n), w = wd(n), dd = Number(s.slice(8));
+      if (n === lo || dd === 1) {
+        const mEnd = Math.min(hi, toN(s.slice(0, 8) + "01") + 31);
+        const m = el("div", "month", `${s.slice(0, 4)}년 ${Number(s.slice(5, 7))}월`);
+        m.style.left = X(n) + "px";
+        let e = n; while (e < hi && Number(toS(e + 1).slice(8)) !== 1) e++;
+        m.style.width = (e - n + 1) * dayW + "px";
+        months.appendChild(m);
+      }
+      const hol = HOLIDAYS[s];
+      const col = el("div", "col" + (hol ? " hol" : (w === 0 || w === 6) ? " we" : "") + (w === 1 ? " mon" : ""));
+      col.style.left = X(n) + "px"; col.style.width = dayW + "px";
+      cols.appendChild(col);
+      if (state.scale === "day" || w === 1) {
+        const d = el("div", "day" + (w === 0 || w === 6 ? " we" : "") + (hol ? " hol" : "") + (n === TODAY ? " today" : ""));
+        d.style.left = X(n) + "px"; d.style.width = (state.scale === "day" ? dayW : dayW * 7) + "px";
+        if (state.scale === "week") d.style.textAlign = "left";
+        const b = el("b", null, String(dd)); d.append(b, state.scale === "day" ? WD[w] : "주");
+        d.title = s + (hol ? " " + hol : "");
+        dayRow.appendChild(d);
+      }
+    }
+    r1.appendChild(months); r2.appendChild(dayRow);
+    hdr.append(r1, r2);
+    root.append(hdr, cols);
+    const tl = el("div", "todayline"); tl.style.left = (lwPx + X(TODAY) + dayW / 2 - 1) + "px"; root.appendChild(tl);
+
+    // 그룹
+    const groups = new Map();
+    list.slice().sort((a, b) => toN(a.start) - toN(b.start) || (PORDER[a.process] ?? 99) - (PORDER[b.process] ?? 99))
+      .forEach(t => { const k = groupKey(t); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(t); });
+    const gkeys = [...groups.keys()].sort((a, b) => {
+      if (state.group === "process") return (PORDER[a] ?? 99) - (PORDER[b] ?? 99);
+      const fa = Math.min(...groups.get(a).map(t => toN(t.start))), fb = Math.min(...groups.get(b).map(t => toN(t.start)));
+      return fa - fb || a.localeCompare(b, "ko");
+    });
+
+    gkeys.forEach(gk => {
+      const items = groups.get(gk);
+      const g = el("div", "row grow");
+      const gl = el("div", "lcell");
+      const l1 = el("div", "l1"); l1.appendChild(el("span", "nm", gk));
+      const late = items.filter(t => statusOf(t) === "late").length;
+      if (late) l1.appendChild(el("span", "chip s-late", `지연 ${late}`));
+      gl.appendChild(l1);
+      if (state.group === "order") {
+        const prod = items.find(t => t.product)?.product, qty = items.find(t => t.qty)?.qty;
+        const sub = [prod, qty ? Number(qty).toLocaleString("ko-KR") + " EA" : null].filter(Boolean).join(" · ");
+        if (sub) gl.appendChild(el("div", "l2", sub));
+      } else gl.appendChild(el("div", "l2", `${items.length}개 공정`));
+      const gt = el("div", "tcell"); gt.style.width = tw + "px";
+      const gs = Math.min(...items.map(t => toN(t.start))), ge = Math.max(...items.map(t => toN(t.end)));
+      let w = 0, wp = 0; items.forEach(t => { const d = toN(t.end) - toN(t.start) + 1; w += d; wp += d * (Number(t.progress) || 0); });
+      const gb = el("div", "gbar"); gb.style.left = X(gs) + "px"; gb.style.width = (ge - gs + 1) * dayW + "px";
+      const gi = el("i"); gi.style.width = Math.round(wp / w) + "%"; gb.appendChild(gi);
+      gb.title = `${toS(gs)} ~ ${toS(ge)} · 진척 ${Math.round(wp / w)}%`;
+      const glab = el("div", "blabel"); glab.style.left = (X(ge + 1) + 6) + "px"; glab.style.top = "13px";
+      glab.textContent = `${Math.round(wp / w)}% · ${toS(gs).slice(5).replace("-", "/")}–${toS(ge).slice(5).replace("-", "/")}`;
+      gt.append(gb, glab);
+      g.append(gl, gt);
+      root.appendChild(g);
+
+      items.forEach(t => root.appendChild(taskRow(t, X, dayW, tw)));
+    });
+
+    sheet.appendChild(root);
+    if (!state.scrolled) { state.scrolled = true; scrollToToday(); }
+    state._X = X; state._lo = lo; state._dayW = dayW;
+  }
+
+  function taskRow(t, X, dayW, tw) {
+    const st = statusOf(t), s = toN(t.start), e = toN(t.end), p = Math.max(0, Math.min(100, Number(t.progress) || 0));
+    const color = `var(${PCOLOR[t.process] || "--p-in"})`;
+    const r = el("div", "row");
+    const l = el("div", "lcell"); l.tabIndex = 0; l.setAttribute("role", "button");
+    l.setAttribute("aria-label", `${t.process} ${t.order || ""} 편집`);
+    const l1 = el("div", "l1");
+    const sw = el("span", "sw"); sw.style.setProperty("--c", color);
+    const second = state.group === "process" ? (t.order || "") : (t.process || "");
+    l1.append(sw, el("span", "nm", second), el("span", "chip s-" + st, STATUS[st]));
+    if (t.example) l1.appendChild(el("span", "chip ex", "예시"));
+    const meta = state.group === "line" ? [t.order, t.owner] : state.group === "process" ? [t.line, t.owner] : [t.line, t.owner];
+    l.append(l1, el("div", "l2", meta.filter(Boolean).join(" · ") || "설비·담당 미지정"));
+    l.onclick = () => openEditor(t);
+    l.onkeydown = ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); openEditor(t); } };
+
+    const tc = el("div", "tcell"); tc.style.width = tw + "px";
+    const bar = el("div", "bar" + (st === "late" ? " late" : "") + (st === "done" ? " done" : ""));
+    bar.style.setProperty("--c", color);
+    bar.style.left = X(s) + "px"; bar.style.width = (e - s + 1) * dayW + "px";
+    const fill = el("div", "fill"); fill.style.width = p + "%"; bar.appendChild(fill);
+    const hdl = el("div", "hdl"); bar.appendChild(hdl);
+    bar.title = `${t.process} · ${t.start} ~ ${t.end} (${e - s + 1}일) · 진척 ${p}%` + (t.memo ? `\n${t.memo}` : "");
+    tc.appendChild(bar);
+    let labelX = X(e + 1) + 6;
+    if (st === "late") {
+      const od = el("div", "overdue"); od.style.left = X(e + 1) + "px"; od.style.width = (TODAY - e) * dayW + "px";
+      tc.appendChild(od); labelX = X(TODAY + 1) + 6;
+    }
+    const lab = el("div", "blabel");
+    const b = el("b", null, p + "%");
+    const qtyTxt = t.qty ? ` · ${Math.round((Number(t.qty) || 0) * p / 100).toLocaleString("ko-KR")}/${Number(t.qty).toLocaleString("ko-KR")}` : "";
+    lab.append(b, ` ${e - s + 1}일${qtyTxt}` + (st === "late" ? ` · ${TODAY - e}일 지연` : ""));
+    lab.style.left = labelX + "px";
+    tc.appendChild(lab);
+    attachDrag(bar, hdl, t, dayW, X, lab, labelX);
+    r.append(l, tc);
+    return r;
+  }
+
+  // ---------- 끌어서 일정 변경 ----------
+  function attachDrag(bar, hdl, t, dayW, X, lab, labelX) {
+    bar.addEventListener("pointerdown", ev => {
+      if (ev.button !== 0) return;
+      if (ev.pointerType !== "mouse" || state.writable === false || !state.coll) {
+        const up = () => { bar.removeEventListener("pointerup", up); openEditor(t); };
+        bar.addEventListener("pointerup", up, { once: true });
+        return;
+      }
+      ev.preventDefault();
+      const mode = ev.target === hdl ? "resize" : "move";
+      const x0 = ev.clientX, s0 = toN(t.start), e0 = toN(t.end);
+      let dd = 0;
+      bar.setPointerCapture(ev.pointerId);
+      bar.classList.add("drag");
+      const move = mv => {
+        dd = Math.round((mv.clientX - x0) / dayW);
+        if (mode === "move") { bar.style.left = X(s0 + dd) + "px"; lab.style.left = (labelX + dd * dayW) + "px"; }
+        else { const ne = Math.max(s0, e0 + dd); dd = ne - e0; bar.style.width = (ne - s0 + 1) * dayW + "px"; lab.style.left = (X(ne + 1) + 6) + "px"; }
+        bar.title = mode === "move" ? `${toS(s0 + dd)} ~ ${toS(e0 + dd)}` : `${t.start} ~ ${toS(e0 + dd)}`;
+      };
+      const up = () => {
+        bar.removeEventListener("pointermove", move); bar.removeEventListener("pointerup", up); bar.removeEventListener("pointercancel", up);
+        bar.classList.remove("drag");
+        if (dd === 0) { openEditor(t); return; }
+        const next = { ...stripId(t) };
+        if (mode === "move") { next.start = toS(s0 + dd); next.end = toS(e0 + dd); }
+        else next.end = toS(e0 + dd);
+        saveTask(t.id, next, mode === "move" ? `${t.process} 일정을 ${dd > 0 ? dd + "일 뒤로" : -dd + "일 앞으로"} 옮겼습니다` : `${t.process} 종료일을 ${next.end}로 바꿨습니다`);
+      };
+      bar.addEventListener("pointermove", move);
+      bar.addEventListener("pointerup", up);
+      bar.addEventListener("pointercancel", up);
+    });
+  }
+
+  function stripId(t) { const { id, ...rest } = t; return rest; }
+
+  function scrollToToday() {
+    const wrap = $("sheetWrap");
+    requestAnimationFrame(() => {
+      if (!state._X) return;
+      wrap.scrollLeft = Math.max(0, state._X(TODAY) - 3 * state._dayW * (state.scale === "day" ? 1 : 5));
+    });
+  }
+
+  // ---------- 저장 ----------
+  async function saveTask(id, data, msg) {
+    if (!state.coll) { toast("저장소에 연결되지 않아 저장하지 못했어요."); render(); return false; }
+    data.updatedAt = new Date().toISOString();
+    try {
+      if (id) await state.coll.doc(id).set(data);
+      else await state.coll.add(data);
+      if (msg) toast(msg);
+      return true;
+    } catch (e) {
+      handleWriteError(e); render(); return false;
+    }
+  }
+  function handleWriteError(e) {
+    const code = e && e.code;
+    if (code === "invalid_argument" && state.writable == null) { state.writable = false; toast("이 공정표는 보기 권한만 있어 수정할 수 없어요."); applyWritable(); }
+    else if (code === "quota_exceeded") toast("저장 공간이 가득 찼어요. 끝난 공정을 지운 뒤 다시 시도하세요.");
+    else if (code === "resource_exhausted") toast("요청이 많아 잠시 저장하지 못했어요. 잠시 후 다시 시도하세요.");
+    else toast("저장하지 못했어요. 잠시 후 다시 시도하세요.");
+  }
+  function applyWritable() {
+    const ro = state.writable === false;
+    $("addBtn").disabled = ro; $("addBtn").title = ro ? "보기 권한만 있습니다" : "";
+    render();
+  }
+
+  async function loadSamples() {
+    if (!state.coll) return;
+    const T = TODAY, d = n => toS(T + n);
+    const rows = [
+      ["WO-2610-031", "브래킷 A-220", 1200, [["자재입고", "자재창고", -12, -11, 100], ["절단", "레이저 1호기", -10, -7, 100], ["가공", "CNC 2호기", -6, -2, 100], ["용접", "용접 1라인", -3, 2, 55], ["도장", "분체도장 라인", 3, 5, 0], ["검사", "품질검사실", 6, 6, 0], ["포장·출하", "출하장", 7, 7, 0]]],
+      ["WO-2610-034", "프레임 F-90", 300, [["자재입고", "자재창고", -9, -8, 100], ["절단", "밴드쏘 2호기", -7, -4, 100], ["용접", "용접 2라인", -5, -1, 70], ["도장", "액체도장 부스", 0, 4, 0], ["조립", "조립 A라인", 5, 9, 0], ["검사", "품질검사실", 10, 10, 0]]],
+      ["WO-2610-037", "하우징 H-15", 2500, [["절단", "레이저 1호기", -2, 1, 60], ["가공", "CNC 1호기", 1, 6, 5], ["조립", "조립 B라인", 7, 12, 0], ["검사", "품질검사실", 13, 13, 0], ["포장·출하", "출하장", 14, 15, 0]]]
+    ];
+    try {
+      for (const [order, product, qty, steps] of rows) {
+        for (const [process, line, s, e, progress] of steps) {
+          await state.coll.add({ order, product, qty, process, line, owner: "", start: d(s), end: d(e), progress, memo: "", example: true, updatedAt: new Date().toISOString() });
+        }
+      }
+      toast("예시 공정을 불러왔어요. ‘예시 지우기’로 한 번에 지울 수 있습니다.");
+    } catch (e) { handleWriteError(e); }
+  }
+
+  let clearArmed = false, clearTimer = null;
+  $("clearExBtn").onclick = async () => {
+    const btn = $("clearExBtn");
+    if (!clearArmed) { clearArmed = true; btn.classList.add("armed"); btn.textContent = "한 번 더 누르면 삭제"; clearTimer = setTimeout(() => { clearArmed = false; btn.classList.remove("armed"); btn.textContent = "예시 지우기"; }, 4000); return; }
+    clearTimeout(clearTimer); clearArmed = false; btn.classList.remove("armed"); btn.textContent = "예시 지우기";
+    try { for (const t of state.tasks.filter(x => x.example)) await state.coll.doc(t.id).delete(); toast("예시 공정을 지웠어요."); }
+    catch (e) { handleWriteError(e); }
+  };
+
+  // ---------- 편집 창 ----------
+  const dlg = $("dlg");
+  let editing = null, delArmed = false;
+  const sel = $("f-process");
+  PROCESSES.forEach(p => { const o = el("option", null, p.k); o.value = p.k; sel.appendChild(o); });
+  $("f-progr").oninput = () => { $("f-prog").value = $("f-progr").value; };
+  $("f-prog").oninput = () => { $("f-progr").value = $("f-prog").value; };
+
+  function fillLists() {
+    const uniq = k => [...new Set(state.tasks.map(t => t[k]).filter(Boolean))].sort();
+    [["dl-order", "order"], ["dl-product", "product"], ["dl-line", "line"]].forEach(([id, k]) => {
+      const dl = $(id); dl.textContent = ""; uniq(k).forEach(v => { const o = el("option"); o.value = v; dl.appendChild(o); });
+    });
+  }
+
+  function openEditor(t) {
+    if (dlg.open) return;
+    editing = t; delArmed = false;
+    fillLists();
+    const ro = state.writable === false || !state.coll;
+    $("dlgTitle").textContent = t ? (ro ? "공정 정보" : "공정 편집") : "공정 추가";
+    const v = t || { order: "", product: "", process: "절단", line: "", owner: "", start: toS(TODAY), end: toS(TODAY + 2), qty: "", progress: 0, memo: "" };
+    $("f-order").value = v.order || ""; $("f-product").value = v.product || ""; $("f-process").value = PCOLOR[v.process] ? v.process : "절단";
+    $("f-line").value = v.line || ""; $("f-owner").value = v.owner || ""; $("f-start").value = v.start; $("f-end").value = v.end;
+    $("f-qty").value = v.qty || ""; $("f-prog").value = Number(v.progress) || 0; $("f-progr").value = Number(v.progress) || 0; $("f-memo").value = v.memo || "";
+    $("ferr").textContent = "";
+    $("delBtn").hidden = !t || ro; $("delBtn").classList.remove("armed"); $("delBtn").textContent = "삭제";
+    $("saveBtn").hidden = ro;
+    dlg.querySelectorAll("input,select,textarea").forEach(i => i.disabled = ro);
+    $("cancelBtn").textContent = ro ? "닫기" : "취소";
+    dlg.showModal();
+  }
+  $("cancelBtn").onclick = () => dlg.close();
+  $("delBtn").onclick = async () => {
+    if (!editing) return;
+    if (!delArmed) { delArmed = true; $("delBtn").classList.add("armed"); $("delBtn").textContent = "한 번 더 누르면 삭제"; return; }
+    try { await state.coll.doc(editing.id).delete(); toast(`${editing.process} 공정을 삭제했습니다`); dlg.close(); }
+    catch (e) { handleWriteError(e); }
+  };
+  $("frm").addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const data = {
+      order: $("f-order").value.trim(), product: $("f-product").value.trim(), process: $("f-process").value,
+      line: $("f-line").value.trim(), owner: $("f-owner").value.trim(), start: $("f-start").value, end: $("f-end").value,
+      qty: $("f-qty").value === "" ? null : Math.max(0, Math.round(Number($("f-qty").value))),
+      progress: Math.max(0, Math.min(100, Math.round(Number($("f-prog").value) || 0))), memo: $("f-memo").value.trim(),
+      example: editing ? !!editing.example : false
+    };
+    if (!data.order) { $("ferr").textContent = "작업지시번호를 입력하세요."; $("f-order").focus(); return; }
+    if (!isValidDate(data.start) || !isValidDate(data.end)) { $("ferr").textContent = "시작일과 종료일을 모두 입력하세요."; return; }
+    if (toN(data.end) < toN(data.start)) { $("ferr").textContent = "종료일이 시작일보다 빠릅니다. 날짜를 확인하세요."; $("f-end").focus(); return; }
+    $("saveBtn").disabled = true;
+    const ok = await saveTask(editing && editing.id, data, editing ? "저장했습니다" : `${data.process} 공정을 추가했습니다`);
+    $("saveBtn").disabled = false;
+    if (ok) dlg.close();
+  });
+
+  // ---------- 도구막대 ----------
+  function bindSeg(id, key, after) {
+    const seg = $(id);
+    seg.querySelectorAll("button").forEach(b => {
+      b.setAttribute("aria-pressed", String(b.dataset.v === state[key]));
+      b.onclick = () => { state[key] = b.dataset.v; seg.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", String(x === b))); saveView(); render(); after && after(); };
+    });
+  }
+  bindSeg("groupSeg", "group");
+  bindSeg("statusSeg", "status");
+  bindSeg("scaleSeg", "scale", scrollToToday);
+  $("todayBtn").onclick = scrollToToday;
+  $("addBtn").onclick = () => openEditor(null);
+
+  const n = new Date(TODAY * DAY);
+  $("todayLbl").textContent = `${toS(TODAY)} (${WD[n.getUTCDay()]})`;
+  renderLegend();
+  render();
+
+  // ---------- 저장소 연결 ----------
+  (async () => {
+    const db = window.claude && window.claude.use ? await window.claude.use("db") : null;
+    if (!db) { state.noDb = true; state.loaded = false; $("addBtn").disabled = true; render(); return; }
+    state.db = db; state.coll = db.collection("tasks");
+    try {
+      const user = await window.claude.use("user");
+      if (user) state.writable = await user.can("data.write");
+    } catch (e) {}
+    applyWritable();
+    state.coll.onSnapshot(snap => {
+      state.tasks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      state.loaded = true;
+      render();
+    }, err => {
+      if (!state.loaded) { state.noDb = true; render(); }
+      toast("공정 데이터 연결이 끊겼어요. 페이지를 새로 고쳐 주세요.");
+    });
+  })();
+})();
+</script>
+</body>
+</html>
