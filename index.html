@@ -348,7 +348,7 @@ dialog h2 { margin: 0; font-size: 20.5px; }
     if (kind === "loading") {
       box.append(el("h2", null, "공정 일정을 불러오는 중"), el("p", null, "작업지시별 공정과 진척률이 이곳에 표시됩니다."));
     } else if (kind === "nodb") {
-      box.append(el("h2", null, "이 화면에서는 공정 데이터를 불러올 수 없어요"), el("p", null, "로그인한 상태로 claude.ai에서 이 페이지를 열면 팀과 같은 일정을 보고 편집할 수 있습니다."));
+      box.append(el("h2", null, "브라우저 저장소를 사용할 수 없어요"), el("p", null, "시크릿(개인정보 보호) 창이거나 사이트 데이터 저장이 차단되어 있으면 공정을 저장할 수 없습니다. 일반 창에서 다시 열어 보세요."));
     } else if (kind === "filtered") {
       box.append(el("h2", null, "조건에 맞는 공정이 없어요"), el("p", null, "상태 필터를 ‘전체’로 바꿔 보세요."));
     } else {
@@ -678,23 +678,45 @@ dialog h2 { margin: 0; font-size: 20.5px; }
   renderLegend();
   render();
 
-  // ---------- 저장소 연결 ----------
-  (async () => {
-    const db = window.claude && window.claude.use ? await window.claude.use("db") : null;
-    if (!db) { state.noDb = true; state.loaded = false; $("addBtn").disabled = true; render(); return; }
-    state.db = db; state.coll = db.collection("tasks");
-    try {
-      const user = await window.claude.use("user");
-      if (user) state.writable = await user.can("data.write");
-    } catch (e) {}
+  // ---------- 저장소 연결 (이 브라우저의 localStorage) ----------
+  (() => {
+    const KEY = "gantt-tasks";
+    const read = () => { const v = JSON.parse(localStorage.getItem(KEY) || "[]"); return Array.isArray(v) ? v : []; };
+    let rows;
+    try { rows = read(); localStorage.setItem(KEY, JSON.stringify(rows)); }
+    catch (e) { state.noDb = true; $("addBtn").disabled = true; render(); return; }
+
+    const listeners = [];
+    const notify = () => {
+      const snap = { docs: rows.map(({ id, ...rest }) => ({ id, data: () => rest })) };
+      listeners.forEach(fn => fn(snap));
+    };
+    // 저장에 성공했을 때만 메모리 상태를 바꿔, 실패해도 화면과 저장 내용이 어긋나지 않게 함
+    const commit = next => {
+      try { localStorage.setItem(KEY, JSON.stringify(next)); }
+      catch (e) { const err = new Error("save failed"); err.code = e && e.name === "QuotaExceededError" ? "quota_exceeded" : "unavailable"; throw err; }
+      rows = next; notify();
+    };
+    const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+    state.coll = {
+      add: async data => commit([...rows, { ...data, id: newId() }]),
+      doc: id => ({
+        set: async data => commit(rows.some(t => t.id === id) ? rows.map(t => t.id === id ? { ...data, id } : t) : [...rows, { ...data, id }]),
+        delete: async () => commit(rows.filter(t => t.id !== id))
+      }),
+      onSnapshot: fn => { listeners.push(fn); fn({ docs: rows.map(({ id, ...rest }) => ({ id, data: () => rest })) }); }
+    };
+    // 같은 브라우저의 다른 탭에서 바꾼 내용 반영
+    window.addEventListener("storage", ev => { if (ev.key === KEY) { try { rows = read(); notify(); } catch (e) {} } });
+
+    state.writable = true;
+    $("note").textContent = "공정 데이터는 이 브라우저에만 저장됩니다. 다른 기기·브라우저에서는 보이지 않고, 사이트 데이터를 지우면 함께 삭제됩니다.";
     applyWritable();
     state.coll.onSnapshot(snap => {
       state.tasks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       state.loaded = true;
       render();
-    }, err => {
-      if (!state.loaded) { state.noDb = true; render(); }
-      toast("공정 데이터 연결이 끊겼어요. 페이지를 새로 고쳐 주세요.");
     });
   })();
 })();
